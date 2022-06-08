@@ -1,0 +1,7 @@
+2022-06-08 20:28:42,195:INFO:__main__:Dalyba: 10 / 5 = 2.0
+2022-06-08 20:31:55,786:ERROR:__main__:Dalyba is nulio
+Traceback (most recent call last):
+  File "C:\Users\Vytautas\codeacademy_python_course\logging_course\main.py", line 47, in dalyba
+    rezultatas = a / b
+ZeroDivisionError: division by zero
+2022-06-08 20:31:55,788:INFO:__main__:Dalyba: 20 / 0 = None
