@@ -1,7 +1,10 @@
-from my_objects import Person
-from my_functions import say_hello
+import random
 
-# p1 = Person()
-# p1.say_hello()
+sample = [1, 2, 3, None]
 
-say_hello()
+def get_random_from_sample(sample):
+    return random.choice(sample)
+
+print(get_random_from_sample(sample))
+while get_random_from_sample(sample):
+    print("did not get None")
