@@ -1,10 +1,6 @@
-import random
+import numpy as np
 
-sample = [1, 2, 3, None]
+a = np.array([1,2,3])
+b = np.array([4,5,6,7,1,2,3])
 
-def get_random_from_sample(sample):
-    return random.choice(sample)
-
-print(get_random_from_sample(sample))
-while get_random_from_sample(sample):
-    print("did not get None")
+print(np.setdiff1d(a,b))
