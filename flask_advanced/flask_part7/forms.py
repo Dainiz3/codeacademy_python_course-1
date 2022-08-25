@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import SubmitField, BooleanField, StringField, PasswordField
+from wtforms import SubmitField, BooleanField, StringField, PasswordField, FloatField
 from wtforms.validators import DataRequired, ValidationError, EqualTo
 import app
 from flask_wtf.file import FileField, FileAllowed
@@ -55,3 +55,9 @@ class PaskyrosAtnaujinimoForma(FlaskForm):
                 raise ValidationError(
                     "Šis el. pašto adresas panaudotas. Pasirinkite kitą."
                 )
+
+
+class IrasasForm(FlaskForm):
+    pajamos = BooleanField("Pajamos")
+    suma = FloatField("Suma", [DataRequired()])
+    submit = SubmitField("Įvesti")
