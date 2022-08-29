@@ -1,32 +1,17 @@
+import secrets
 import os
-from flask import Flask, render_template, redirect, url_for, flash, request
-from flask_sqlalchemy import SQLAlchemy
-from flask_bcrypt import Bcrypt
+from PIL import Image
+from flask_mail import Message
+from flask import render_template, redirect, url_for, flash, request
 from flask_login import (
-    LoginManager,
     current_user,
     logout_user,
     login_user,
-    UserMixin,
     login_required,
 )
-
-import forms
-import secrets
-from PIL import Image
-from flask_migrate import Migrate
-from flask_admin import Admin
-from flask_admin.contrib.sqla import ModelView
-from sqlalchemy import DateTime
+from biudzetas import db, app, bcrypt, mail, forms
+from biudzetas.models import Vartotojas, Irasas
 from datetime import datetime
-
-
-class ManoModelView(ModelView):
-    def is_accessible(self):
-        return (
-            current_user.is_authenticated
-            and current_user.el_pastas == "aasdf1@pastas.lt"
-        )
 
 
 def save_picture(form_picture):
@@ -45,52 +30,19 @@ def save_picture(form_picture):
     return picture_fn
 
 
-basedir = os.path.abspath(os.path.dirname(__file__))
-app = Flask(__name__)
-app.config["SECRET_KEY"] = "4654f5dfadsrfasdr54e6rae"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(
-    basedir, "biudzetas.db"
-)
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db = SQLAlchemy(app)
-Migrate(app, db)
-
-
-bcrypt = Bcrypt(app)
-login_manager = LoginManager(app)
-login_manager.login_view = "prisijungti"
-login_manager.login_message_category = "info"
-
-
-class Vartotojas(db.Model, UserMixin):
-    __tablename__ = "vartotojas"
-    id = db.Column(db.Integer, primary_key=True)
-    vardas = db.Column("Vardas", db.String(20), unique=True, nullable=False)
-    el_pastas = db.Column(
-        "El. pašto adresas", db.String(120), unique=True, nullable=False
+def send_reset_email(user):
+    token = user.get_reset_token()
+    msg = Message(
+        "Slaptažodžio atnaujinimo užklausa",
+        sender="vytautas.sluckas.teaching@gmail.com",
+        recipients=[user.el_pastas],
     )
-    nuotrauka = db.Column(db.String(20), nullable=False, default="default.jpg")
-    slaptazodis = db.Column("Slaptažodis", db.String(60), unique=True, nullable=False)
-
-
-class Irasas(db.Model):
-    __tablename__ = "irasas"
-    id = db.Column(db.Integer, primary_key=True)
-    data = db.Column("Data", DateTime, default=datetime.now())
-    pajamos = db.Column("Pajamos", db.Boolean)
-    suma = db.Column("Suma", db.Integer)
-    vartotojas_id = db.Column(db.Integer, db.ForeignKey("vartotojas.id"))
-    vartotojas = db.relationship("Vartotojas", lazy=True)
-
-
-admin = Admin(app)
-admin.add_view(ManoModelView(Irasas, db.session))
-admin.add_view(ManoModelView(Vartotojas, db.session))
-
-
-@login_manager.user_loader
-def load_user(vartotojo_id):
-    return Vartotojas.query.get(int(vartotojo_id))
+    msg.body = f"""Norėdami atnaujinti slaptažodį, paspauskite nuorodą:
+    {url_for('reset_token', token=token, _external=True)}
+    Jei jūs nedarėte šios užklausos, nieko nedarykite ir slaptažodis nebus pakeistas.
+    """
+    print(msg.body)
+    mail.send(msg)
 
 
 @app.route("/")
@@ -186,11 +138,13 @@ def new_record():
     db.create_all()
     forma = forms.IrasasForm()
     if forma.validate_on_submit():
+        print(f"Pajamos: {forma.pajamos.data}")
         naujas_irasas = Irasas(
             pajamos=forma.pajamos.data,
             suma=forma.suma.data,
             vartotojas_id=current_user.id,
         )
+        print(naujas_irasas)
         db.session.add(naujas_irasas)
         db.session.commit()
         flash(f"Įrašas sukurtas", "success")
@@ -218,6 +172,74 @@ def update(id):
     return render_template("update.html", form=forma, irasas=irasas)
 
 
-if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8000, debug=True)
-    db.create_all()
+@app.route("/reset_password", methods=["GET", "POST"])
+def reset_request():
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
+    form = forms.UzklausosAtnaujinimoForma()
+    if form.validate_on_submit():
+        user = Vartotojas.query.filter_by(el_pastas=form.el_pastas.data).first()
+        if user:
+
+            send_reset_email(user)
+            flash(
+                "Jums išsiųstas el. laiškas su slaptažodžio atnaujinimo instrukcijomis.",
+                "info",
+            )
+            return redirect(url_for("prisijungti"))
+        else:
+            flash(
+                "Tokio emailo nera",
+                "warning",
+            )
+    return render_template("reset_request.html", title="Reset Password", form=form)
+
+
+@app.route("/reset_password/<token>", methods=["GET", "POST"])
+def reset_token(token):
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
+    user = Vartotojas.verify_reset_token(token)
+    if user is None:
+        flash("Užklausa netinkama arba pasibaigusio galiojimo", "warning")
+        return redirect(url_for("reset_request"))
+    form = forms.SlaptazodzioAtnaujinimoForma()
+    if form.validate_on_submit():
+        hashed_password = bcrypt.generate_password_hash(form.slaptazodis.data).decode(
+            "utf-8"
+        )
+        user.slaptazodis = hashed_password
+        db.session.commit()
+        flash("Tavo slaptažodis buvo atnaujintas! Gali prisijungti", "success")
+        return redirect(url_for("prisijungti"))
+    return render_template("reset_token.html", title="Reset Password", form=form)
+
+
+@app.route("/balansas")
+def balance():
+    try:
+        visi_irasai = Irasas.query.filter_by(vartotojas_id=current_user.id)
+    except:
+        visi_irasai = []
+    balansas = 0
+    for irasas in visi_irasai:
+        if irasas.pajamos:
+            balansas += irasas.suma
+        else:
+            balansas -= irasas.suma
+    return render_template("balansas.html", balansas=balansas)
+
+
+@app.errorhandler(404)
+def klaida_404(klaida):
+    return render_template("404.html"), 404
+
+
+@app.errorhandler(403)
+def klaida_403(klaida):
+    return render_template("403.html"), 403
+
+
+@app.errorhandler(500)
+def klaida_500(klaida):
+    return render_template("500.html"), 500
