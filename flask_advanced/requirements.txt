@@ -4,3 +4,9 @@ Flask-SQLAlchemy==2.5.1
 Flask-Migrate==3.1.0
 WTForms-SQLAlchemy==0.3
 Flask-RESTful==0.3.9
+Pillow==9.2.0
+Flask-Admin==1.6.0
+Flask-Bcrypt==1.0.1
+Flask-Login==0.6.2
+Flask-Mail==0.9.1
+itsdangerous==1.1.0
